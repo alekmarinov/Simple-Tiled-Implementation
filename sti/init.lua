@@ -1,3 +1,58 @@
+function pixelToTile(xp, yp, size)
+	xp = xp - size
+	yp = yp - size
+
+    local function round(n)
+        return math.floor(n + 0.5)
+    end
+
+    local function cube_round(cx, cy, cz)
+        local rx = round(cx)
+        local ry = round(cy)
+        local rz = round(cz)
+    
+        local x_diff = math.abs(rx - cx)
+        local y_diff = math.abs(ry - cy)
+        local z_diff = math.abs(rz - cz)
+    
+        if x_diff > y_diff and x_diff > z_diff then
+            rx = -ry-rz
+        elseif y_diff > z_diff then
+            ry = -rx-rz
+        else
+            rz = -rx-ry
+        end
+    
+        return rx, ry, rz
+    end
+    
+    local function cube_to_oddq(cx, cy, cz)
+        local col = cx
+        local odd = math.floor(cx) % 2
+        local row = cz + math.floor((cx - odd) / 2)
+        return col, row
+    end
+
+    local function pixel_to_flat_hex(x, y)
+        local q = ( 2 / 3 * x                  ) / size
+        local r = (-1 / 3 * x  +  math.sqrt(3) / 3 * y) / size
+        return cube_to_oddq(cube_round(q, -q-r, r))
+    end  
+
+    local xt, yt = pixel_to_flat_hex(xp, yp)
+    return xt+1, yt+1
+end
+
+function tileToPixel(q, r, size)
+    q = q - 1
+    r = r - 1
+    local x = size * 3/2 * q
+    local odd = math.floor(q) % 2
+    local y = size * math.sqrt(3) * (r + 0.5 * odd)
+    return x+size, y+size
+end
+
+
 --- Simple and fast Tiled map loader and renderer.
 -- @module sti
 -- @author Landon Manning
@@ -425,22 +480,26 @@ function Map:getLayerTilePosition(layer, tile, x, y)
 			local rowH = tileH - (tileH - sideLen) / 2
 			tileY = (y - 1) * rowH + tile.offset.y
 		else
-			if self.staggerindex == "odd" then
-				if x % 2 == 0 then
-					tileY = (y - 1) * tileH + tileH / 2 + tile.offset.y
-				else
-					tileY = (y - 1) * tileH + tile.offset.y
-				end
-			else
-				if x % 2 == 0 then
-					tileY = (y - 1) * tileH + tile.offset.y
-				else
-					tileY = (y - 1) * tileH + tileH / 2 + tile.offset.y
-				end
-			end
+			-- if self.staggerindex == "odd" then
+			-- 	if x % 2 == 0 then
+			-- 		tileY = (y - 1) * tileH + tileH / 2 + tile.offset.y
+			-- 	else
+			-- 		tileY = (y - 1) * tileH + tile.offset.y
+			-- 	end
+			-- else
+			-- 	if x % 2 == 0 then
+			-- 		tileY = (y - 1) * tileH + tile.offset.y
+			-- 	else
+			-- 		tileY = (y - 1) * tileH + tileH / 2 + tile.offset.y
+			-- 	end
+			-- end
 
-			local colW = tileW - (tileW - sideLen) / 2
-			tileX = (x - 1) * colW + tile.offset.x
+			-- local colW = tileW - (tileW - sideLen) / 2
+			-- tileX = (x - 1) * colW + tile.offset.x
+
+			tileX, tileY = tileToPixel(x, y, sideLen)
+			tileX = tileX + tile.offset.x - sideLen
+			tileY = tileY + tile.offset.y + self.tileheight - tile.height - sideLen
 		end
 	end
 
@@ -1229,9 +1288,10 @@ function Map:convertTileToPixel(x,y)
 		local sideLen = self.hexsidelength or 0
 
 		if self.staggeraxis == "x" then
-			return
-				x * tileW,
-				ceil(y) * (tileH + sideLen) + (ceil(y) % 2 == 0 and tileH or 0)
+			-- return
+			-- 	x * tileW,
+			-- 	ceil(y) * (tileH + sideLen) + (ceil(y) % 2 == 0 and tileH or 0)
+			return tileToPixel(x, y, sideLen)
 		else
 			return
 				ceil(x) * (tileW + sideLen) + (ceil(x) % 2 == 0 and tileW or 0),
@@ -1360,98 +1420,102 @@ function Map:convertPixelToTile(x, y)
 		local even      = self.staggerindex == "even"
 		local tileW     = self.tilewidth
 		local tileH     = self.tileheight
-		local sideLenX  = 0
-		local sideLenY  = 0
 
-		local colW       = tileW / 2
-		local rowH       = tileH / 2
-		if staggerX then
-			sideLenX = self.hexsidelength
-			x = x - (even and tileW or (tileW - sideLenX) / 2)
-			colW = colW - (colW  - sideLenX / 2) / 2
-		else
-			sideLenY = self.hexsidelength
-			y = y - (even and tileH or (tileH - sideLenY) / 2)
-			rowH = rowH - (rowH  - sideLenY / 2) / 2
-		end
+		assert(staggerX and not even)
+		return pixelToTile(x, y, self.hexsidelength)
 
-		local referenceX = ceil(x) / (colW * 2)
-		local referenceY = ceil(y) / (rowH * 2)
+	-- 	local sideLenX  = 0
+	-- 	local sideLenY  = 0
 
-    -- If in staggered line, then shift reference by 0.5 of other axes
-		if staggerX then
-			if (floor(referenceX) % 2 == 0) == even then
-				referenceY = referenceY - 0.5
-			end
-		else
-			if (floor(referenceY) % 2 == 0) == even then
-				referenceX = referenceX - 0.5
-			end
-		end
+	-- 	local colW       = tileW / 2
+	-- 	local rowH       = tileH / 2
+	-- 	if staggerX then
+	-- 		sideLenX = self.hexsidelength
+	-- 		x = x - (even and tileW or (tileW - sideLenX) / 2)
+	-- 		colW = colW - (colW  - sideLenX / 2) / 2
+	-- 	else
+	-- 		sideLenY = self.hexsidelength
+	-- 		y = y - (even and tileH or (tileH - sideLenY) / 2)
+	-- 		rowH = rowH - (rowH  - sideLenY / 2) / 2
+	-- 	end
 
-		local relativeX  = x - referenceX * colW * 2
-		local relativeY  = y - referenceY * rowH * 2
-		local centers
+	-- 	local referenceX = ceil(x) / (colW * 2)
+	-- 	local referenceY = ceil(y) / (rowH * 2)
 
-		if staggerX then
-			local left    = sideLenX / 2
-			local centerX = left + colW
-			local centerY = tileH / 2
+    -- -- If in staggered line, then shift reference by 0.5 of other axes
+	-- 	if staggerX then
+	-- 		if (floor(referenceX) % 2 == 0) == even then
+	-- 			referenceY = referenceY - 0.5
+	-- 		end
+	-- 	else
+	-- 		if (floor(referenceY) % 2 == 0) == even then
+	-- 			referenceX = referenceX - 0.5
+	-- 		end
+	-- 	end
 
-			centers = {
-				{ x = left,           y = centerY        },
-				{ x = centerX,        y = centerY - rowH },
-				{ x = centerX,        y = centerY + rowH },
-				{ x = centerX + colW, y = centerY        },
-			}
-		else
-			local top     = sideLenY / 2
-			local centerX = tileW / 2
-			local centerY = top + rowH
+	-- 	local relativeX  = x - referenceX * colW * 2
+	-- 	local relativeY  = y - referenceY * rowH * 2
+	-- 	local centers
 
-			centers = {
-				{ x = centerX,        y = top },
-				{ x = centerX - colW, y = centerY },
-				{ x = centerX + colW, y = centerY },
-				{ x = centerX,        y = centerY + rowH }
-			}
-		end
+	-- 	if staggerX then
+	-- 		local left    = sideLenX / 2
+	-- 		local centerX = left + colW
+	-- 		local centerY = tileH / 2
 
-		local nearest = 0
-		local minDist = math.huge
+	-- 		centers = {
+	-- 			{ x = left,           y = centerY        },
+	-- 			{ x = centerX,        y = centerY - rowH },
+	-- 			{ x = centerX,        y = centerY + rowH },
+	-- 			{ x = centerX + colW, y = centerY        },
+	-- 		}
+	-- 	else
+	-- 		local top     = sideLenY / 2
+	-- 		local centerX = tileW / 2
+	-- 		local centerY = top + rowH
 
-		local function len2(ax, ay)
-			return ax * ax + ay * ay
-		end
+	-- 		centers = {
+	-- 			{ x = centerX,        y = top },
+	-- 			{ x = centerX - colW, y = centerY },
+	-- 			{ x = centerX + colW, y = centerY },
+	-- 			{ x = centerX,        y = centerY + rowH }
+	-- 		}
+	-- 	end
 
-		for i = 1, 4 do
-			local dc = len2(centers[i].x - relativeX, centers[i].y - relativeY)
+	-- 	local nearest = 0
+	-- 	local minDist = math.huge
 
-			if dc < minDist then
-				minDist = dc
-				nearest = i
-			end
-		end
+	-- 	local function len2(ax, ay)
+	-- 		return ax * ax + ay * ay
+	-- 	end
 
-		local offsetsStaggerX = {
-			{ x = 1, y =  1 },
-			{ x = 2, y =  0 },
-			{ x = 2, y =  1 },
-			{ x = 3, y =  1 },
-		}
+	-- 	for i = 1, 4 do
+	-- 		local dc = len2(centers[i].x - relativeX, centers[i].y - relativeY)
 
-		local offsetsStaggerY = {
-			{ x =  1, y = 1 },
-			{ x =  0, y = 2 },
-			{ x =  1, y = 2 },
-			{ x =  1, y = 3 },
-		}
+	-- 		if dc < minDist then
+	-- 			minDist = dc
+	-- 			nearest = i
+	-- 		end
+	-- 	end
 
-		local offsets = staggerX and offsetsStaggerX or offsetsStaggerY
+	-- 	local offsetsStaggerX = {
+	-- 		{ x = 1, y =  1 },
+	-- 		{ x = 2, y =  0 },
+	-- 		{ x = 2, y =  1 },
+	-- 		{ x = 3, y =  1 },
+	-- 	}
 
-		return
-			referenceX + offsets[nearest].x,
-			referenceY + offsets[nearest].y
+	-- 	local offsetsStaggerY = {
+	-- 		{ x =  1, y = 1 },
+	-- 		{ x =  0, y = 2 },
+	-- 		{ x =  1, y = 2 },
+	-- 		{ x =  1, y = 3 },
+	-- 	}
+
+	-- 	local offsets = staggerX and offsetsStaggerX or offsetsStaggerY
+
+	-- 	return
+	-- 		referenceX + offsets[nearest].x,
+	-- 		referenceY + offsets[nearest].y
 	end
 end
 
