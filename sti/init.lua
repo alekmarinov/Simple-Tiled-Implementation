@@ -136,6 +136,7 @@ function Map:init(path, plugins, ox, oy)
 	self.objects       = {}
 	self.tiles         = {}
 	self.tileInstances = {}
+	self.instances = {}
 	self.drawRange     = {
 		sx = 1,
 		sy = 1,
@@ -549,6 +550,10 @@ function Map:addNewLayerTile(layer, chunk, tile, x, y)
 
 	self.tileInstances[tile.gid] = self.tileInstances[tile.gid] or {}
 	table.insert(self.tileInstances[tile.gid], instance)
+
+	-- alek: 2D grid of instances for fast and convenient access
+	self.instances[y] = self.instances[y] or {}
+	self.instances[y][x] = instance
 end
 
 function Map:set_batches(layer, chunk)
